@@ -8,7 +8,7 @@ A powerful, queue-powered CSV and Excel import wizard for Filament with smart co
 ![Filament 4.x/5.x](https://img.shields.io/badge/Filament-4.x%2F5.x-F59E0B)
 ![License: MIT](https://img.shields.io/badge/License-MIT-green)
 
-[![Demo](screenshots/filament-import-wizard-screen.png)](https://raw.githubusercontent.com/waadmawlood/Awesome-Laravel-Resources/refs/heads/main/filament-import-wizard-banner.mp4)
+https://github.com/user-attachments/assets/1a5d1015-0d0f-4c11-b8e7-7f58f8bc63fa
 
 ## ✨ Features
 

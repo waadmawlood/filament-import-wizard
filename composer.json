@@ -1,0 +1,54 @@
+{
+    "name": "waad/filament-import-wizard",
+    "type": "library",
+    "description": "A powerful, queue-powered CSV and Excel import wizard for Filament with smart column mapping, relationship linking, and background processing for 100K+ rows.",
+    "keywords": [
+        "filament",
+        "import",
+        "wizard",
+        "csv",
+        "excel",
+        "queue",
+        "mapping",
+        "relationship",
+        "upsert",
+        "livewire"
+    ],
+    "require": {
+        "php": "^8.2",
+        "filament/filament": "^4.0|^5.0",
+        "livewire/livewire": "^3.0|^4.0|^5.0",
+        "phpoffice/phpspreadsheet": "^5.0",
+        "league/csv": "^9.0"
+    },
+    "require-dev": {
+        "laravel/pint": "^1.0"
+    },
+    "license": "MIT",
+    "autoload": {
+        "psr-4": {
+            "Waad\\FilamentImportWizard\\": "src/"
+        }
+    },
+    "authors": [
+        {
+            "name": "Waad Mawlood",
+            "email": "w12345678996392@gmail.com"
+        }
+    ],
+    "extra": {
+        "laravel": {
+            "providers": [
+                "Waad\\FilamentImportWizard\\FilamentImportWizardServiceProvider"
+            ]
+        },
+        "git": {
+            "allow-empty": true
+        }
+    },
+    "minimum-stability": "dev",
+    "prefer-stable": true,
+    "scripts": {
+        "format": "pint"
+    }
+}

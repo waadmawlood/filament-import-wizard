@@ -204,4 +204,8 @@ If you discover any bugs or have feature requests, please open an issue on [GitH
 
 ## Screenshot
 
-![Screenshot](screenshots/filament-import-wizard-screen.png)
+![Screenshot](screenshots/image1.png)
+![Screenshot](screenshots/image2.png)
+![Screenshot](screenshots/image3.png)
+![Screenshot](screenshots/image4.png)
+

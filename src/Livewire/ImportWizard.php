@@ -7,6 +7,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\Relation;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Schema;
+use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\Str;
 use Illuminate\View\View;
 use League\Csv\Bom;
@@ -18,7 +19,6 @@ use Livewire\WithFileUploads;
 use PhpOffice\PhpSpreadsheet\IOFactory;
 use Waad\FilamentImportWizard\Jobs\ProcessImportChunk;
 use Waad\FilamentImportWizard\Models\ImportSession;
-use Illuminate\Support\Facades\Validator;
 
 class ImportWizard extends Component
 {
@@ -522,7 +522,7 @@ class ImportWizard extends Component
                 $headers = [];
                 foreach ($record as $i => $h) {
                     $headerName = Str::of($h)->trim()->studly()->toString();
-                    $headers[] = $headerName ?: 'Column' . ($i + 1);
+                    $headers[] = $headerName ?: 'Column'.($i + 1);
                 }
 
                 continue;
@@ -557,7 +557,7 @@ class ImportWizard extends Component
                 $headers = [];
                 foreach ($cells as $i => $h) {
                     $headerName = $h ? Str::of($h)->trim()->studly()->toString() : '';
-                    $headers[] = $headerName ?: 'Column' . ($i + 1);
+                    $headers[] = $headerName ?: 'Column'.($i + 1);
                 }
 
                 continue;
@@ -895,6 +895,7 @@ class ImportWizard extends Component
 
         $rules = $this->getModelValidationRules();
         $dataToValidate = [];
+        $relationForeignKeys = [];
 
         foreach ($this->columnMappings as $header => $mapping) {
             if (! $mapping) {
@@ -909,9 +910,23 @@ class ImportWizard extends Component
                 if (count($parts) === 3) {
                     $foreignKey = $parts[2];
                     $dataToValidate[$foreignKey] = $value;
+                    $relationForeignKeys[] = $foreignKey;
                 }
             } else {
                 $dataToValidate[$mapping] = $value;
+            }
+        }
+
+        // For relation foreign keys, we should skip type validation (like numeric/integer)
+        // because the value in the CSV is a label (e.g. Category Name) that will be
+        // resolved to an ID later in the background job.
+        foreach ($relationForeignKeys as $fk) {
+            if (isset($rules[$fk])) {
+                $fkRules = is_array($rules[$fk]) ? $rules[$fk] : explode('|', $rules[$fk]);
+                $rules[$fk] = array_filter($fkRules, function ($rule) {
+                    // Only keep essential rules, remove type constraints
+                    return in_array($rule, ['required', 'nullable', 'min', 'max']);
+                });
             }
         }
 

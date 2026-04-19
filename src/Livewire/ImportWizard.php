@@ -18,6 +18,7 @@ use Livewire\WithFileUploads;
 use PhpOffice\PhpSpreadsheet\IOFactory;
 use Waad\FilamentImportWizard\Jobs\ProcessImportChunk;
 use Waad\FilamentImportWizard\Models\ImportSession;
+use Illuminate\Support\Facades\Validator;
 
 class ImportWizard extends Component
 {
@@ -68,6 +69,8 @@ class ImportWizard extends Component
     public array $relationForeignKeys = [];
 
     public ?string $errorMessage = null;
+
+    protected array $modelRules = [];
 
     public function getUniqueRelations(): array
     {
@@ -516,7 +519,11 @@ class ImportWizard extends Component
 
         foreach ($reader as $index => $record) {
             if ($index === 0) {
-                $headers = array_map(fn ($h) => Str::of($h)->trim()->studly()->toString(), $record);
+                $headers = [];
+                foreach ($record as $i => $h) {
+                    $headerName = Str::of($h)->trim()->studly()->toString();
+                    $headers[] = $headerName ?: 'Column' . ($i + 1);
+                }
 
                 continue;
             }
@@ -547,7 +554,11 @@ class ImportWizard extends Component
             }
 
             if ($rowIndex === 1) {
-                $headers = array_map(fn ($h) => $h ? Str::of($h)->trim()->studly()->toString() : 'Column'.count($headers), $cells);
+                $headers = [];
+                foreach ($cells as $i => $h) {
+                    $headerName = $h ? Str::of($h)->trim()->studly()->toString() : '';
+                    $headers[] = $headerName ?: 'Column' . ($i + 1);
+                }
 
                 continue;
             }
@@ -565,10 +576,10 @@ class ImportWizard extends Component
         $modelColumns = $this->getModelColumns();
 
         foreach ($this->headers as $header) {
-            $normalized = Str::of($header)->lower()->snake()->toString();
+            $normalized = Str::of($header)->snake()->lower()->toString();
 
             foreach ($modelColumns as $column) {
-                if (Str::of($column)->lower()->snake()->toString() === $normalized) {
+                if (Str::of($column)->snake()->lower()->toString() === $normalized) {
                     $this->columnMappings[$header] = $column;
                     break;
                 }
@@ -803,13 +814,17 @@ class ImportWizard extends Component
         $this->previewData = [];
 
         $data = $this->loadAllData();
+        $sampleCount = 0;
+        $maxSample = 100;
 
         foreach ($data as $index => $row) {
             $rowErrors = $this->validateRow($row);
             $row['_errors'] = $rowErrors;
 
-            if (empty($rowErrors)) {
+            // Always add to preview data if we haven't reached the limit
+            if ($sampleCount < $maxSample) {
                 $this->previewData[] = $row;
+                $sampleCount++;
             }
 
             if (! empty($rowErrors)) {
@@ -820,7 +835,13 @@ class ImportWizard extends Component
                 ];
             }
 
+            // Stop if we have too many errors to show in the review UI
             if (count($this->errors) >= 100) {
+                break;
+            }
+
+            // Also stop if we've processed a reasonable amount of rows for preview
+            if ($index >= 500) {
                 break;
             }
         }
@@ -868,25 +889,123 @@ class ImportWizard extends Component
 
     protected function validateRow(array $row): array
     {
-        $errors = [];
-
         if (! $this->modelClass || ! class_exists($this->modelClass)) {
-            return $errors;
+            return [];
         }
 
-        foreach ($this->columnMappings as $header => $column) {
-            if (! $column) {
+        $rules = $this->getModelValidationRules();
+        $dataToValidate = [];
+
+        foreach ($this->columnMappings as $header => $mapping) {
+            if (! $mapping) {
                 continue;
             }
 
             $value = $row[$header] ?? null;
 
-            if ($column === 'email' && $value && ! filter_var($value, FILTER_VALIDATE_EMAIL)) {
-                $errors[$header] = 'Invalid email format';
+            if (str_contains($mapping, '|')) {
+                // Relationship mapping: relation.field|owner_key|foreign_key
+                $parts = explode('|', $mapping);
+                if (count($parts) === 3) {
+                    $foreignKey = $parts[2];
+                    $dataToValidate[$foreignKey] = $value;
+                }
+            } else {
+                $dataToValidate[$mapping] = $value;
             }
         }
 
-        return $errors;
+        $validator = Validator::make($dataToValidate, $rules);
+
+        if ($validator->fails()) {
+            $rowErrors = [];
+            foreach ($validator->errors()->toArray() as $field => $messages) {
+                // Find matching header for this field
+                foreach ($this->columnMappings as $header => $mapping) {
+                    if ($mapping === $field || (str_contains($mapping, '|') && explode('|', $mapping)[2] === $field)) {
+                        $rowErrors[$header] = $messages[0];
+                        break;
+                    }
+                }
+            }
+
+            return $rowErrors;
+        }
+
+        return [];
+    }
+
+    protected function getModelValidationRules(): array
+    {
+        if (! empty($this->modelRules)) {
+            return $this->modelRules;
+        }
+
+        if (! $this->modelClass || ! class_exists($this->modelClass)) {
+            return [];
+        }
+
+        $model = new $this->modelClass;
+
+        // Check if model has custom rules for import
+        if (method_exists($model, 'getImportRules')) {
+            return $this->modelRules = $model->getImportRules();
+        }
+
+        $rules = [];
+        try {
+            $table = $model->getTable();
+            // Schema::getColumns is available in Laravel 10.10+
+            $columns = Schema::getColumns($table);
+
+            foreach ($columns as $column) {
+                $name = $column['name'];
+
+                // Skip system columns
+                if (in_array($name, [$model->getKeyName(), 'created_at', 'updated_at', 'deleted_at'])) {
+                    continue;
+                }
+
+                $colRules = [];
+
+                // Required check: not nullable and no default value
+                if (! $column['nullable'] && ! isset($column['default']) && ! ($column['auto_increment'] ?? false)) {
+                    $colRules[] = 'required';
+                } else {
+                    $colRules[] = 'nullable';
+                }
+
+                $type = strtolower($column['type_name'] ?? $column['type'] ?? '');
+
+                if (str_contains($type, 'int') || str_contains($type, 'decimal') || str_contains($type, 'float') || str_contains($type, 'double')) {
+                    $colRules[] = 'numeric';
+                } elseif (str_contains($type, 'bool') || $type === 'tinyint(1)') {
+                    $colRules[] = 'boolean';
+                } elseif (str_contains($type, 'date') || str_contains($type, 'time')) {
+                    $colRules[] = 'date';
+                }
+
+                if ($name === 'email' || str_contains($name, 'email')) {
+                    $colRules[] = 'email';
+                }
+
+                // Unique check (only if not upserting)
+                if (($column['unique'] ?? false) && ! $this->enableUpsert) {
+                    $colRules[] = "unique:{$table},{$name}";
+                }
+
+                if (! empty($colRules)) {
+                    $rules[$name] = $colRules;
+                }
+            }
+        } catch (\Exception $e) {
+            // Fallback for older Laravel or unexpected schema format
+            $rules = [
+                'email' => ['nullable', 'email'],
+            ];
+        }
+
+        return $this->modelRules = $rules;
     }
 
     public function previousStep()

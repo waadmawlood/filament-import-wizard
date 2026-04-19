@@ -146,8 +146,8 @@ class ProcessImportChunk implements ShouldQueue
         $sheet = $spreadsheet->getActiveSheet();
         $headers = $this->session->headers ?? [];
 
-        $startRow = $this->chunkIndex * $this->chunkSize + 1;
-        $endRow = $startRow + $this->chunkSize;
+        $startRow = ($this->chunkIndex * $this->chunkSize) + 2;
+        $endRow = $startRow + $this->chunkSize - 1;
 
         $data = [];
         $rowIterator = $sheet->getRowIterator($startRow, $endRow);
